@@ -174,7 +174,7 @@ Without Content Patcher, we just load the file directly and return it. Simple. E
 
 When Content Patcher is present, we instead pass that call to something like:
 ```csharp
-Helper.Content.Load<Texture2D>("Mods/MyName.MyCoolMod/Themes/SomeoneElse.TheirThemesName/Menu.png")
+Helper.Content.Load<Texture2D>("Mods/MyName.MyCoolMod/Themes/SomeoneElse.TheirThemesName/Menu.png", ContentSource.GameContent);
 ```
 
 To break it down, that string is combined from:
@@ -252,7 +252,7 @@ Including a theme in other mods is slightly more involved than just throwing dow
 	},
 
 	// Our Theme!
-	"Me.MyCoolMod:theme": "compat/MyCoolMod/theme.json"
+	"MyName.MyCoolMod:theme": "compat/MyCoolMod/theme.json"
 }
 ```
 
