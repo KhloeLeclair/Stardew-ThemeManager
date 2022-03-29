@@ -1,5 +1,7 @@
 ﻿# ThemeManager
 
+> **Hey!** This is for SMAPI v4.00 or later, when the new asset loading pipeline was introduced. If you're looking for SMAPI v3.13 and lower support, check the main-3 branch.
+
 * [What is ThemeManager?](#what-is-thememanager)
 * [Quick! How do I use this?](#quick-how-do-i-use-this)
 * [So, what is a Theme?](#so-what-is-a-theme)
@@ -23,7 +25,7 @@ ThemeManager is a content loader for Stardew Valley C# mods that:
 
 4. Makes it easy to reload themes at runtime for easier development.
 
-5. Passes resources through an IAssetLoader so that Content Patcher packs can modify resources.
+5. Passes resources through SMAPI's AssetRequested event so that Content Patcher packs can modify resources.
 
 6. Exists in a single file that is easy to drop into a project with no other dependencies.
 
@@ -186,7 +188,7 @@ To break it down, that string is combined from:
 5. The literal string `/`
 6. The requested asset path.
 
-Our `IAssetLoader` is in charge of intercepting that request later on, and actually loading the base resource. The important thing, however, is that you can then in Content Patcher do something like
+Our event handler for `AssetRequested` is in charge of intercepting that request later on, and actually loading the base resource. The important thing, however, is that you can then in Content Patcher do something like
 ```json
 {
 	"Format": "1.25.0",
