@@ -1,6 +1,6 @@
 ﻿# ThemeManager
 
-> **Hey!** This is for SMAPI v3.13 and lower. For SMAPI v4.00 support, check the [main-4 branch](https://github.com/KhloeLeclair/Stardew-ThemeManager/tree/main-4).
+> **Hey!** This is for SMAPI v3.13 and lower. For SMAPI v3.14+ and v4+ support, check the [main-4 branch](https://github.com/KhloeLeclair/Stardew-ThemeManager/tree/main-4).
 
 * [What is ThemeManager?](#what-is-thememanager)
 * [Quick! How do I use this?](#quick-how-do-i-use-this)
