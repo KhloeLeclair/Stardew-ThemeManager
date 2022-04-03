@@ -26,7 +26,7 @@ ThemeManager is a content loader for Stardew Valley C# mods that:
 
 4. Makes it easy to reload themes at runtime for easier development.
 
-5. Passes resources through SMAPI's AssetRequested event so that Content Patcher packs can modify resources.
+5. Passes resources through SMAPI's `AssetRequested` event so that Content Patcher packs can modify resources.
 
 6. Exists in a single file that is easy to drop into a project with no other dependencies.
 
@@ -166,7 +166,7 @@ Glad you asked. For the above, hypothetical mod:
 
 ## Content Patcher Integration
 
-When Content Patcher is loaded, ThemeManager will redirect `.Load<>()` requests through GameContent using its implementation of `IAssetLoader`.
+When Content Patcher is loaded, ThemeManager will redirect `.Load<>()` requests through GameContent using its event handler for `AssetRequested`.
 
 Say, for example, you request a menu texture:
 ```csharp
