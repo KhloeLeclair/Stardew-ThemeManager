@@ -9,6 +9,8 @@
 * [Well, what does a `theme.json` look like?](#well-what-does-a-themejson-file-look-like)
 * [Content Patcher Integration](#content-patcher-integration)
 * [Theme Folder Structure](#theme-folder-structure)
+* [Changelog](CHANGELOG.md)
+
 
 ## What is ThemeManager?
 

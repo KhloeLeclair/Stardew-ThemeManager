@@ -125,7 +125,7 @@ namespace Leclair.Stardew.ThemeManager
 	public class ThemeManager<DataT> where DataT : BaseThemeData
 	{
 
-		public static readonly SemanticVersion Version = new("1.1.0");
+		public static readonly SemanticVersion Version = new("1.1.1-assetloader");
 
 		public static readonly string ContentPatcher_UniqueID = "Pathoschild.ContentPatcher";
 
