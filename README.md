@@ -1,6 +1,6 @@
 ﻿# ThemeManager
 
-> **Hey!** This is for SMAPI v4.00 or later, when the new asset loading pipeline was introduced. If you're looking for SMAPI v3.13 and lower support, check the [main-3 branch](https://github.com/KhloeLeclair/Stardew-ThemeManager/tree/main-3).
+> **Hey!** This is for SMAPI v3.14 / v4.00 or later, when the new asset loading pipeline was introduced. If you're looking for SMAPI v3.13 and lower support, check the [main-3 branch](https://github.com/KhloeLeclair/Stardew-ThemeManager/tree/main-3).
 
 * [What is ThemeManager?](#what-is-thememanager)
 * [Quick! How do I use this?](#quick-how-do-i-use-this)
@@ -9,6 +9,7 @@
 * [Well, what does a `theme.json` look like?](#well-what-does-a-themejson-file-look-like)
 * [Content Patcher Integration](#content-patcher-integration)
 * [Theme Folder Structure](#theme-folder-structure)
+* [Changelog](CHANGELOG.md)
 
 ## What is ThemeManager?
 

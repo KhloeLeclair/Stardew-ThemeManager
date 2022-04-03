@@ -126,7 +126,7 @@ namespace Leclair.Stardew.ThemeManager
 	public class ThemeManager<DataT> where DataT : BaseThemeData
 	{
 
-		public static readonly SemanticVersion Version = new("1.1.0");
+		public static readonly SemanticVersion Version = new("1.1.1");
 
 		public static readonly string ContentPatcher_UniqueID = "Pathoschild.ContentPatcher";
 
@@ -880,7 +880,7 @@ namespace Leclair.Stardew.ThemeManager
 			if (!string.IsNullOrEmpty(themeId))
 				key = PathUtilities.NormalizeAssetName(Path.Join(AssetLoaderPrefix, themeId));
 
-			Mod.Helper.Content.InvalidateCache(info => info.Name.StartsWith(key));
+			Mod.Helper.GameContent.InvalidateCache(info => info.Name.StartsWith(key));
 		}
 
 		/// <summary>
@@ -911,7 +911,7 @@ namespace Leclair.Stardew.ThemeManager
 
 			try
 			{
-				return Mod.Helper.Content.Load<T>(assetPath, ContentSource.GameContent);
+				return Mod.Helper.GameContent.Load<T>(assetPath);
 			}
 			finally
 			{
@@ -968,7 +968,7 @@ namespace Leclair.Stardew.ThemeManager
 				if (BaseThemeData.Item2.HasFile(lpath))
 					try
 					{
-						return BaseThemeData.Item2.LoadAsset<T>(lpath);
+						return BaseThemeData.Item2.ModContent.Load<T>(lpath);
 					}
 					catch (Exception ex)
 					{
@@ -980,7 +980,7 @@ namespace Leclair.Stardew.ThemeManager
 			if (!string.IsNullOrEmpty(DefaultAssetPrefix))
 				path = Path.Join(DefaultAssetPrefix, path);
 
-			return Mod.Helper.Content.Load<T>(path);
+			return Mod.Helper.ModContent.Load<T>(path);
 		}
 
 		#endregion
@@ -997,7 +997,7 @@ namespace Leclair.Stardew.ThemeManager
 				if (!LoadingAssets.ContainsKey(e.Name.BaseName))
 					return;
 
-				e.LoadFrom(() => LoadingAssets[e.Name.BaseName]);
+				e.LoadFrom(() => LoadingAssets[e.Name.BaseName], AssetLoadPriority.Low);
 			}
 		}
 
