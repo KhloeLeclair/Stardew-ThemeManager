@@ -1,4 +1,6 @@
-﻿using System;
+﻿#nullable enable
+
+using System;
 using System.IO;
 using System.Linq;
 using System.Collections;
@@ -18,6 +20,12 @@ namespace Leclair.Stardew.ThemeManager
 	///
 	/// You should subclass BaseThemeData for your own mod, adding any
 	/// appropriate values that you would like to be controllable via theme.
+	/// 
+	/// If you need an example of what sort of data you could add to a theme,
+	/// my mod <see href="https://www.nexusmods.com/stardewvalley/mods/11022">Almanac</see>
+	/// makes extensive use of themes to customize how its own GUI draws,
+	/// with custom margins on elements and colors. You can find its theme
+	/// class <see href="https://github.com/KhloeLeclair/StardewMods/blob/main/Almanac/Models/Theme.cs">here</see>.
 	/// </summary>
 	public class BaseThemeData
 	{
@@ -25,14 +33,14 @@ namespace Leclair.Stardew.ThemeManager
 		/// LocalizedNames is a mapping of locale codes to human-readable theme
 		/// names suitable for display in a theme selector.
 		/// </summary>
-		public Dictionary<string, string> LocalizedNames { get; set; }
+		public Dictionary<string, string>? LocalizedNames { get; set; }
 
 		/// <summary>
 		/// For is a list of mod UniqueIDs that this theme is meant to support.
 		/// When the current theme is set to Automatic, this theme will be
 		/// selected if one of the mods listed is loaded.
 		/// </summary>
-		public string[] For { get; set; }
+		public string[]? For { get; set; }
 
 		/// <summary>
 		/// AssetPrefix is prepended to all asset file paths when loading
@@ -41,11 +49,20 @@ namespace Leclair.Stardew.ThemeManager
 		public string AssetPrefix { get; set; } = "assets";
 
 		/// <summary>
-		/// Check to see if any loaded mods are in this theme's For block.
+		/// When <see cref="PreventRedirection"/> is enabled, assets for this
+		/// theme will not be loaded through the game's content loading
+		/// pipeline and Content Patcher will <b>not</b> be able to affect them.
 		/// </summary>
-		/// <param name="registry">Your own mod's IModRegistry helper</param>
-		/// <returns>true if there are any matching mods</returns>
-		public bool HasMatchingMod(IModRegistry registry)
+		public bool PreventRedirection { get; set; } = false;
+
+        #region Methods
+
+        /// <summary>
+        /// Check to see if any loaded mods are in this theme's For block.
+        /// </summary>
+        /// <param name="registry">Your own mod's IModRegistry helper</param>
+        /// <returns>true if there are any matching mods</returns>
+        public bool HasMatchingMod(IModRegistry registry)
 		{
 			if (For != null)
 				foreach (string mod in For)
@@ -56,6 +73,8 @@ namespace Leclair.Stardew.ThemeManager
 
 			return false;
 		}
+
+		#endregion
 	}
 
 	/// <summary>
@@ -79,13 +98,13 @@ namespace Leclair.Stardew.ThemeManager
 		/// <summary>
 		/// The theme data of the old theme
 		/// </summary>
-		public DataT OldData;
+		public DataT? OldData;
 		/// <summary>
 		/// The theme data of the new theme
 		/// </summary>
-		public DataT NewData;
+		public DataT? NewData;
 
-		public ThemeChangedEventArgs(string oldId, DataT oldData, string newID, DataT newData)
+		public ThemeChangedEventArgs(string oldId, DataT? oldData, string newID, DataT? newData)
 		{
 			OldId = oldId;
 			NewId = newID;
@@ -104,12 +123,24 @@ namespace Leclair.Stardew.ThemeManager
 	/// </summary>
 	internal class SimpleManifest
 	{
-		public string UniqueID { get; set; }
-		public string Name { get; set; }
-		public string Description { get; set; }
-		public string Author { get; set; }
-		public string Version { get; set; }
+		public string? UniqueID { get; set; }
+		public string? Name { get; set; }
+		public string? Description { get; set; }
+		public string? Author { get; set; }
+		public string? Version { get; set; }
 	}
+
+	/// <summary>
+	/// Theme records group together a theme's <typeparamref name="DataT"/>
+	/// and <see cref="IContentPack"/> instances for convenience.
+	/// </summary>
+	/// <typeparam name="DataT">Your mod's BaseThemeData subclass</typeparam>
+	/// <param name="Data">The theme's theme data.</param>
+	/// <param name="Content">The theme's content pack.</param>
+	internal record Theme<DataT>(
+		DataT Data,
+		IContentPack Content
+	);
 
 	/// <summary>
 	/// ThemeManager is a standalone class for adding theme support to
@@ -125,7 +156,7 @@ namespace Leclair.Stardew.ThemeManager
 	public class ThemeManager<DataT> where DataT : BaseThemeData
 	{
 
-		public static readonly SemanticVersion Version = new("1.1.1-assetloader");
+		public static readonly SemanticVersion Version = new("1.2.1-assetloader");
 
 		public static readonly string ContentPatcher_UniqueID = "Pathoschild.ContentPatcher";
 
@@ -139,19 +170,26 @@ namespace Leclair.Stardew.ThemeManager
 		/// <summary>
 		/// A dictionary mapping all known themes to their own UniqueIDs.
 		/// </summary>
-		private readonly Dictionary<string, Tuple<DataT, IContentPack>> Themes = new();
+		private readonly Dictionary<string, Theme<DataT>> Themes = new();
 
 		/// <summary>
 		/// Storage of the <see cref="DefaultTheme"/>. This should not be accessed directly,
 		/// instead prefering the use of <see cref="DefaultTheme"/> (which is public).
 		/// </summary>
-		private DataT _DefaultTheme;
+		private DataT? _DefaultTheme;
 
 		/// <summary>
 		/// The currently active theme. We store this directly to avoid needing
 		/// constant dictionary lookups when working with a theme.
 		/// </summary>
-		private Tuple<DataT, IContentPack> BaseThemeData = null;
+		private Theme<DataT>? BaseThemeData = null;
+
+		/// <summary>
+		/// Assets in the process of being loaded are stored in this dictionary
+		/// to simplify the process of validating requests and identifying which
+		/// theme is appropriate.
+		/// </summary>
+		private readonly Dictionary<string, Func<object?>> LoadingAssets = new();
 
 		#endregion
 
@@ -180,7 +218,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// The EmbeddedThemesPath is the relative path to where your mod keeps
 		/// its embedded themes. By default, this is <c>assets/themes</c>.
 		/// </summary>
-		public readonly string EmbeddedThemesPath;
+		public readonly string? EmbeddedThemesPath;
 
 		#endregion
 
@@ -213,10 +251,10 @@ namespace Leclair.Stardew.ThemeManager
 		public ThemeManager(
 			Mod mod,
 			string selectedThemeId = "automatic",
-			DataT defaultTheme = null,
-			string embeddedThemesPath = "assets/themes",
-			string assetPrefix = "assets",
-			string assetLoaderPrefix = null,
+			DataT? defaultTheme = null,
+			string? embeddedThemesPath = "assets/themes",
+			string? assetPrefix = "assets",
+			string? assetLoaderPrefix = null,
 			bool forceAssetRedirection = false
 		)
 		{
@@ -263,13 +301,13 @@ namespace Leclair.Stardew.ThemeManager
 		/// property, a theme changed event may be emitted if the default
 		/// theme is the active theme.
 		/// </summary>
-		public DataT DefaultTheme
+		public DataT? DefaultTheme
 		{
 			get => _DefaultTheme;
 			set
 			{
 				bool is_default = ActiveThemeId == "default";
-				DataT oldData = Theme;
+				DataT? oldData = Theme;
 				_DefaultTheme = value;
 				if (is_default)
 					ThemeChanged?.Invoke(this, new ThemeChangedEventArgs<DataT>("default", oldData, "default", _DefaultTheme));
@@ -287,13 +325,13 @@ namespace Leclair.Stardew.ThemeManager
 		/// The currently selected theme's ID. This value may be <c>automatic</c>,
 		/// and thus should not be used for checking which theme is active.
 		/// </summary>
-		public string SelectedThemeId { get; private set; } = null;
+		public string? SelectedThemeId { get; private set; } = null;
 
 		/// <summary>
 		/// The currently active theme's ID. This value will never be
 		/// <c>automatic</c>. It may be <c>default</c>, or the unique ID of a theme.
 		/// </summary>
-		public string ActiveThemeId { get; private set; } = null;
+		public string ActiveThemeId { get; private set; } = "default";
 
 		/// <summary>
 		/// The currently active theme's <typeparamref name="DataT"/> instance.
@@ -301,14 +339,14 @@ namespace Leclair.Stardew.ThemeManager
 		/// of <see cref="DefaultTheme"/>. This value may be null if there is
 		/// no default theme.
 		/// </summary>
-		public DataT Theme => BaseThemeData?.Item1 ?? _DefaultTheme;
+		public DataT? Theme => BaseThemeData?.Data ?? _DefaultTheme;
 
 		/// <summary>
 		/// This event is fired whenever the currently active theme changes,
 		/// which can happen either when themes are reloaded or when the user
 		/// changes their selected theme.
 		/// </summary>
-		public event EventHandler<ThemeChangedEventArgs<DataT>> ThemeChanged;
+		public event EventHandler<ThemeChangedEventArgs<DataT>>? ThemeChanged;
 
 		/// <summary>
 		/// The DefaultAssetPrefix is prepended to asset paths when loading
@@ -316,13 +354,13 @@ namespace Leclair.Stardew.ThemeManager
 		/// when loading assets from other themes, as themes have their own
 		/// AssetPrefix to use.
 		/// </summary>
-		public string DefaultAssetPrefix { get; private set; }
+		public string? DefaultAssetPrefix { get; private set; }
 
 		#endregion
 
 		#region Logging
 
-		private void Log(string message, LogLevel level = LogLevel.Trace, Exception ex = null, LogLevel? exLevel = null)
+		private void Log(string message, LogLevel level = LogLevel.Trace, Exception? ex = null, LogLevel? exLevel = null)
 		{
 			Mod.Monitor.Log($"[ThemeManager] {message}", level: level);
 			if (ex != null)
@@ -376,7 +414,7 @@ namespace Leclair.Stardew.ThemeManager
 					return false;
 				}
 
-				string selected = null;
+				string? selected = null;
 				var themes = GetThemeChoices();
 
 				// Check for unique ID matches first.
@@ -452,7 +490,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// </summary>
 		/// <param name="themeId">The ID of theme to get the name for</param>
 		/// <param name="locale">The locale to get the name in, if it exists.</param>
-		public string GetThemeName(string themeId, string locale = null)
+		public string GetThemeName(string themeId, string? locale = null)
 		{
 			// For the default theme, return a translation from the host mod's
 			// translation layer.
@@ -461,7 +499,7 @@ namespace Leclair.Stardew.ThemeManager
 
 			// Get the theme data. If the theme is the active theme, don't
 			// bother with a dictionary lookp.
-			Tuple<DataT, IContentPack> theme;
+			Theme<DataT>? theme;
 			if (themeId == ActiveThemeId)
 				theme = BaseThemeData;
 			else
@@ -473,15 +511,18 @@ namespace Leclair.Stardew.ThemeManager
 				}
 			}
 
+			if (theme == null)
+				return themeId;
+
 			// Check for the translation in our theme data.
 			if (string.IsNullOrEmpty(locale))
 				locale = Mod.Helper.Translation.Locale;
 
-			if (theme.Item1.LocalizedNames?.TryGetValue(locale, out string name) ?? false)
+			if (theme.Data.LocalizedNames?.TryGetValue(locale, out string? name) ?? false && name != null)
 				return name;
 
 			// Manifest Name
-			return theme.Item2.Manifest.Name;
+			return theme.Content.Manifest.Name;
 		}
 
 		/// <summary>
@@ -494,7 +535,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// </summary>
 		/// <param name="locale">The locale to get names for</param>
 		/// <returns>An enumeration of available themes</returns>
-		public Dictionary<string, string> GetThemeChoices(string locale = null)
+		public Dictionary<string, string> GetThemeChoices(string? locale = null)
 		{
 			Dictionary<string, string> result = new();
 
@@ -530,6 +571,28 @@ namespace Leclair.Stardew.ThemeManager
 			return result;
 		}
 
+		/// <summary>
+		/// Check to see if a given theme has been loaded.
+		/// </summary>
+		/// <param name="themeId">The theme we want to check.</param>
+		public bool HasTheme(string themeId)
+        {
+			return Themes.ContainsKey(themeId);
+        }
+
+		/// <summary>
+		/// Get the theme data for a specific theme. As this method involves a
+		/// dictionary lookup, you might want to cache the result of this and
+		/// update it when a <see cref="ThemeChanged"/> event is emitted.
+		/// </summary>
+		/// <param name="themeId">The theme we want data for.</param>
+		public DataT? GetTheme(string themeId)
+		{
+			if (Themes.TryGetValue(themeId, out var theme))
+				return theme?.Data;
+			return null;
+		}
+
 		#endregion
 
 		#region Theme Discovery
@@ -555,7 +618,7 @@ namespace Leclair.Stardew.ThemeManager
 
 				// We want to keep track of packs with custom IDs so that we
 				// can use better IDs for embedded packs.
-				Dictionary<string, Tuple<string, IContentPack>> packsWithIds = new();
+				Dictionary<string, Tuple<string?, IContentPack>> packsWithIds = new();
 
 				// If we haven't been forbidden, check for embedded themes and
 				// add them to our packs. We do this first so that any content
@@ -612,15 +675,15 @@ namespace Leclair.Stardew.ThemeManager
 			}
 
 			// Store our currently selected theme.
-			string oldKey = SelectedThemeId;
+			string? oldKey = SelectedThemeId;
 
 			// Clear our data.
 			BaseThemeData = null;
 			SelectedThemeId = null;
-			ActiveThemeId = null;
+			ActiveThemeId = "default";
 
 			// And select the new theme.
-			SelectTheme(oldKey);
+			SelectTheme(oldKey, true);
 			return this;
 		}
 
@@ -628,7 +691,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// Search for loose themes in your mod's embedded themes folder.
 		/// </summary>
 		/// <returns>A dictionary of temporary IContentPacks for each embedded theme.</returns>
-		private Dictionary<string, IContentPack> FindEmbeddedThemes()
+		private Dictionary<string, IContentPack>? FindEmbeddedThemes()
 		{
 			if (string.IsNullOrEmpty(EmbeddedThemesPath))
 				return null;
@@ -655,7 +718,7 @@ namespace Leclair.Stardew.ThemeManager
 
 				Log($"Found Embedded Theme At: {dir}", LogLevel.Trace);
 
-				SimpleManifest manifest = null;
+				SimpleManifest? manifest = null;
 				try
 				{
 					if (File.Exists(man_path))
@@ -699,9 +762,9 @@ namespace Leclair.Stardew.ThemeManager
 		/// Search for themes in other mods' manifests.
 		/// </summary>
 		/// <returns>A dictionary of temporary IContentPacks for each discovered theme.</returns>
-		private Dictionary<string, Tuple<string, IContentPack>> FindExternalThemes()
+		private Dictionary<string, Tuple<string?, IContentPack>> FindExternalThemes()
 		{
-			Dictionary<string, Tuple<string, IContentPack>> results = new();
+			Dictionary<string, Tuple<string?, IContentPack>> results = new();
 			int count = 0;
 
 			string themeKey = $"{Mod.ModManifest.UniqueID}:theme";
@@ -713,7 +776,7 @@ namespace Leclair.Stardew.ThemeManager
 				if (mod?.Manifest?.ExtraFields == null)
 					continue;
 
-				if (!mod.Manifest.ExtraFields.TryGetValue(themeKey, out object value))
+				if (!mod.Manifest.ExtraFields.TryGetValue(themeKey, out object? value))
 					continue;
 
 				string file = themeFile;
@@ -801,7 +864,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// event if doing so has changed the active theme.
 		/// </summary>
 		/// <param name="themeId">The ID of the theme to select</param>
-		public void SelectTheme(string themeId)
+		public void SelectTheme(string? themeId, bool postReload = false)
 		{
 			if (string.IsNullOrEmpty(themeId))
 				themeId = "automatic";
@@ -837,7 +900,7 @@ namespace Leclair.Stardew.ThemeManager
 					if (!Themes.TryGetValue(ids[i], out var themeData))
 						continue;
 
-					if (themeData.Item1?.HasMatchingMod(Mod.Helper.ModRegistry) ?? false)
+					if (themeData.Data?.HasMatchingMod(Mod.Helper.ModRegistry) ?? false)
 					{
 						BaseThemeData = themeData;
 						ActiveThemeId = ids[i];
@@ -851,15 +914,16 @@ namespace Leclair.Stardew.ThemeManager
 			Log($"Selected Theme: {SelectedThemeId} => {GetThemeName(ActiveThemeId)} ({ActiveThemeId})", LogLevel.Trace);
 
 			// Did the active theme actually change?
-			if (ActiveThemeId != old_active)
+			if (ActiveThemeId != old_active || postReload)
 			{
 				// Invalidate old resources to kick them out of memory when
-				// we're no longer using that theme.
-				if (old_active != null)
-					Invalidate(old_active);
+				// we're no longer using that theme. If this is being called
+				// after a theme reload, however, invalidate everything in
+				// case other themes have been manually used.
+				Invalidate(postReload ? null : old_active);
 
 				// And emit our event.
-				ThemeChanged?.Invoke(this, new(old_active, old_data?.Item1, ActiveThemeId, BaseThemeData?.Item1));
+				ThemeChanged?.Invoke(this, new(old_active, old_data?.Data, ActiveThemeId, BaseThemeData?.Data));
 			}
 		}
 
@@ -873,7 +937,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// </summary>
 		/// <param name="themeId">An optional theme ID to only clear tha
 		/// theme's assets.</param>
-		public void Invalidate(string themeId = null)
+		public void Invalidate(string? themeId = null)
 		{
 			string key = AssetLoaderPrefix;
 			if (!string.IsNullOrEmpty(themeId))
@@ -891,18 +955,46 @@ namespace Leclair.Stardew.ThemeManager
 		/// </summary>
 		/// <typeparam name="T">The expected data type.</typeparam>
 		/// <param name="path">The relative file path.</param>
+		/// <param name="themeId">Load the resource from the specified theme rather than the active theme.</param>
 		/// <exception cref="System.ArgumentException">The <paramref name="path"/> is empty or contains invalid characters.</exception>
 		/// <exception cref="Microsoft.Xna.Framework.Content.ContentLoadException">The content asset couldn't be loaded (e.g. because it doesn't exist).</exception>
-		public T Load<T>(string path)
+		public T Load<T>(string path, string? themeId = null)
 		{
+			// Either check the specified theme, or the active theme.
+			Theme<DataT>? theme;
+			if (themeId != null)
+				Themes.TryGetValue(themeId, out theme);
+			else
+			{
+				themeId = ActiveThemeId;
+				theme = BaseThemeData;
+			}
+
 			// Just go straight to InternalLoad if we're not redirecting this
 			// asset in some way. We only redirect if redirection is enabled
-			// and this isn't the default theme.
-			if (!UsingAssetRedirection || BaseThemeData == null)
-				return InternalLoad<T>(path);
+			// and this isn't the default theme and this theme doesn't
+			// prevent asset redirection.
+			if (!UsingAssetRedirection || theme == null || theme.Data.PreventRedirection)
+				return InternalLoad<T>(path, themeId);
 
-			path = PathUtilities.NormalizeAssetName(Path.Join(AssetLoaderPrefix, ActiveThemeId, path));
-			return Mod.Helper.Content.Load<T>(path, ContentSource.GameContent);
+			string assetPath = PathUtilities.NormalizeAssetName(Path.Join(AssetLoaderPrefix, themeId, path));
+
+			lock((LoadingAssets as ICollection).SyncRoot)
+            {
+				LoadingAssets[assetPath] = () => InternalLoad<T>(path, themeId);
+            }
+
+			try
+			{
+				return Mod.Helper.Content.Load<T>(assetPath, ContentSource.GameContent);
+			}
+			finally
+            {
+				lock((LoadingAssets as ICollection).SyncRoot)
+                {
+					LoadingAssets.Remove(assetPath);
+                }
+            }
 		}
 
 		/// <summary>
@@ -910,16 +1002,24 @@ namespace Leclair.Stardew.ThemeManager
 		/// default theme (aka your mod's assets directory).
 		/// </summary>
 		/// <param name="path">The relative file path.</param>
-		public bool HasFile(string path)
+		/// <param name="themeId">Check for the resource in the specified theme rather than the active theme.</param>
+		public bool HasFile(string path, string? themeId = null)
 		{
+			// Either check the specified theme, or the active theme.
+			Theme<DataT>? theme;
+			if (themeId != null)
+				Themes.TryGetValue(themeId, out theme);
+			else
+				theme = BaseThemeData;
+
 			// Check the current active theme.
-			if (BaseThemeData != null)
+			if (theme != null)
 			{
 				string lpath = path;
-				if (!string.IsNullOrEmpty(BaseThemeData.Item1.AssetPrefix))
-					lpath = Path.Join(BaseThemeData.Item1.AssetPrefix, lpath);
+				if (!string.IsNullOrEmpty(theme.Data.AssetPrefix))
+					lpath = Path.Join(theme.Data.AssetPrefix, lpath);
 
-				if (BaseThemeData.Item2.HasFile(lpath))
+				if (theme.Content.HasFile(lpath))
 					return true;
 			}
 
@@ -939,23 +1039,33 @@ namespace Leclair.Stardew.ThemeManager
 		/// <param name="path">The relative file path.</param>
 		/// <exception cref="System.ArgumentException">The key is empty or contains invalid characters.</exception>
 		/// <exception cref="Microsoft.Xna.Framework.Content.ContentLoadException">The content asset couldn't be loaded (e.g. because it doesn't exist).</exception>
-		private T InternalLoad<T>(string path)
+		private T InternalLoad<T>(string path, string? themeId = null)
 		{
+			// Either check the specified theme, or the active theme.
+			Theme<DataT>? theme;
+			if (themeId != null)
+				Themes.TryGetValue(themeId, out theme);
+			else
+			{
+				themeId = ActiveThemeId;
+				theme = BaseThemeData;
+			}
+
 			// Check the current active theme
-			if (BaseThemeData != null)
+			if (theme != null)
 			{
 				string lpath = path;
-				if (!string.IsNullOrEmpty(BaseThemeData.Item1.AssetPrefix))
-					lpath = Path.Join(BaseThemeData.Item1.AssetPrefix, lpath);
+				if (!string.IsNullOrEmpty(theme.Data.AssetPrefix))
+					lpath = Path.Join(theme.Data.AssetPrefix, lpath);
 
-				if (BaseThemeData.Item2.HasFile(lpath))
+				if (theme.Content.HasFile(lpath))
 					try
 					{
-						return BaseThemeData.Item2.LoadAsset<T>(lpath);
+						return theme.Content.LoadAsset<T>(lpath);
 					}
 					catch (Exception ex)
 					{
-						Log($"Failed to load asset \"{path}\" from theme {ActiveThemeId}.", LogLevel.Warn, ex);
+						Log($"Failed to load asset \"{path}\" from theme {themeId}.", LogLevel.Warn, ex);
 					}
 			}
 
@@ -991,32 +1101,20 @@ namespace Leclair.Stardew.ThemeManager
 				if (!asset.AssetName.StartsWith(Manager.AssetLoaderPrefix))
 					return false;
 
-				string path = Path.GetRelativePath(Manager.AssetLoaderPrefix, asset.AssetName);
-
-				// We only care about the currently used theme. There's no need to
-				// load assets from inactive themes.
-				if (!path.StartsWith(Manager.ActiveThemeId))
-					return false;
-
-				path = Path.GetRelativePath(Manager.ActiveThemeId, path);
-				return Manager.HasFile(path);
+				return Manager.LoadingAssets.ContainsKey(asset.AssetName);
 			}
 
 			public T Load<T>(IAssetInfo asset)
 			{
 				// We can only load our own assets.
-				if (!asset.AssetName.StartsWith(Manager.AssetLoaderPrefix))
+				if (!asset.AssetName.StartsWith(Manager.AssetLoaderPrefix) || ! Manager.LoadingAssets.ContainsKey(asset.AssetName))
+#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
+#pragma warning disable CS8603 // Possible null reference return.
 					return (T)(object)null;
 
-				string path = Path.GetRelativePath(Manager.AssetLoaderPrefix, asset.AssetName);
-
-				// We only care about the currently used theme. There's no need to
-				// load assets from inactive themes.
-				if (!path.StartsWith(Manager.ActiveThemeId))
-					return (T)(object)null;
-
-				path = Path.GetRelativePath(Manager.ActiveThemeId, path);
-				return Manager.InternalLoad<T>(path);
+				return (T)Manager.LoadingAssets[asset.AssetName]();
+#pragma warning restore CS8603 // Possible null reference return.
+#pragma warning restore CS8600 // Converting null literal or possible null value to non-nullable type.
 			}
 		}
 
