@@ -1,5 +1,14 @@
 ﻿# Changelog
 
+## 1.2.1
+Released April 7th, 2022.
+
+* Added a `ThemeManager.HasTheme(...)` method for determining if a specific
+  theme is present and loaded.
+* Updated the legacy `IAssetLoader` based version to include the new 1.2.0
+  and 1.2.1 features.
+
+
 ## 1.2.0
 Released April 7th, 2022.
 

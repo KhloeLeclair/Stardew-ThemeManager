@@ -56,12 +56,14 @@ namespace Leclair.Stardew.ThemeManager
 		/// </summary>
 		public bool PreventRedirection { get; set; } = false;
 
-		/// <summary>
-		/// Check to see if any loaded mods are in this theme's For block.
-		/// </summary>
-		/// <param name="registry">Your own mod's IModRegistry helper</param>
-		/// <returns>true if there are any matching mods</returns>
-		public bool HasMatchingMod(IModRegistry registry)
+        #region Methods
+
+        /// <summary>
+        /// Check to see if any loaded mods are in this theme's For block.
+        /// </summary>
+        /// <param name="registry">Your own mod's IModRegistry helper</param>
+        /// <returns>true if there are any matching mods</returns>
+        public bool HasMatchingMod(IModRegistry registry)
 		{
 			if (For != null)
 				foreach (string mod in For)
@@ -72,15 +74,17 @@ namespace Leclair.Stardew.ThemeManager
 
 			return false;
 		}
-	}
 
-	/// <summary>
-	/// This event is emitted by ThemeManager whenever the current theme
-	/// changes, whether because the themes were reload or because the user
-	/// selected a different theme.
-	/// </summary>
-	/// <typeparam name="DataT">Your mod's BaseThemeData subclass</typeparam>
-	public class ThemeChangedEventArgs<DataT> : EventArgs where DataT : BaseThemeData
+        #endregion
+    }
+
+    /// <summary>
+    /// This event is emitted by ThemeManager whenever the current theme
+    /// changes, whether because the themes were reload or because the user
+    /// selected a different theme.
+    /// </summary>
+    /// <typeparam name="DataT">Your mod's BaseThemeData subclass</typeparam>
+    public class ThemeChangedEventArgs<DataT> : EventArgs where DataT : BaseThemeData
 	{
 
 		/// <summary>
@@ -153,7 +157,7 @@ namespace Leclair.Stardew.ThemeManager
 	public class ThemeManager<DataT> where DataT : BaseThemeData
 	{
 
-		public static readonly SemanticVersion Version = new("1.2.0");
+		public static readonly SemanticVersion Version = new("1.2.1");
 
 		public static readonly string ContentPatcher_UniqueID = "Pathoschild.ContentPatcher";
 
@@ -562,6 +566,28 @@ namespace Leclair.Stardew.ThemeManager
 			return result;
 		}
 
+		/// <summary>
+		/// Check to see if a given theme has been loaded.
+		/// </summary>
+		/// <param name="themeId">The theme we want to check.</param>
+		public bool HasTheme(string themeId)
+        {
+			return Themes.ContainsKey(themeId);
+        }
+
+		/// <summary>
+		/// Get the theme data for a specific theme. As this method involves a
+		/// dictionary lookup, you might want to cache the result of this and
+		/// update it when a <see cref="ThemeChanged"/> event is emitted.
+		/// </summary>
+		/// <param name="themeId">The theme we want data for.</param>
+		public DataT? GetTheme(string themeId)
+		{
+			if (Themes.TryGetValue(themeId, out var theme))
+				return theme?.Data;
+			return null;
+		}
+
 		#endregion
 
 		#region Theme Discovery
@@ -902,19 +928,6 @@ namespace Leclair.Stardew.ThemeManager
 		#endregion
 
 		#region Resource Loading
-
-		/// <summary>
-		/// Get the theme data for a specific theme. As this method involves a
-		/// dictionary lookup, you might want to cache the result of this and
-		/// update it when a <see cref="ThemeChanged"/> event is emitted.
-		/// </summary>
-		/// <param name="themeId">The theme we want data for.</param>
-		public DataT? GetTheme(string themeId)
-		{
-			if (Themes.TryGetValue(themeId, out var theme))
-				return theme?.Data;
-			return null;
-		}
 
 		/// <summary>
 		/// Invalidate all content files that we provide via
