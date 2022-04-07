@@ -1,7 +1,5 @@
 ﻿# Changelog
 
-# Changelog
-
 ## 1.2.1
 Released April 7th, 2022.
 
