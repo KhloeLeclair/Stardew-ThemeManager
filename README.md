@@ -1,6 +1,6 @@
 ﻿# ThemeManager
 
-> **Hey!** This is for SMAPI v3.14 / v4.00 or later, when the new asset loading pipeline was introduced. If you're looking for SMAPI v3.13 and lower support, check the [main-3 branch](https://github.com/KhloeLeclair/Stardew-ThemeManager/tree/main-3).
+> **Hey!** This is for SMAPI v3.14 / v4.00 or later, when the new `AssetRequested` event was introduced. If you're looking for SMAPI v3.13 and lower support, check the [main-3 branch](https://github.com/KhloeLeclair/Stardew-ThemeManager/tree/main-3).
 
 * [What is ThemeManager?](#what-is-thememanager)
 * [Quick! How do I use this?](#quick-how-do-i-use-this)
@@ -177,7 +177,7 @@ Without Content Patcher, we just load the file directly and return it. Simple. E
 
 When Content Patcher is present, we instead pass that call to something like:
 ```csharp
-Helper.Content.Load<Texture2D>("Mods/MyName.MyCoolMod/Themes/SomeoneElse.TheirThemesName/Menu.png", ContentSource.GameContent);
+Helper.GameContent.Load<Texture2D>("Mods/MyName.MyCoolMod/Themes/SomeoneElse.TheirThemesName/Menu.png");
 ```
 
 To break it down, that string is combined from:
