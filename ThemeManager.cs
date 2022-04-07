@@ -213,7 +213,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// The EmbeddedThemesPath is the relative path to where your mod keeps
 		/// its embedded themes. By default, this is <c>assets/themes</c>.
 		/// </summary>
-		public readonly string EmbeddedThemesPath;
+		public readonly string? EmbeddedThemesPath;
 
 		#endregion
 
@@ -247,8 +247,8 @@ namespace Leclair.Stardew.ThemeManager
 			Mod mod,
 			string selectedThemeId = "automatic",
 			DataT? defaultTheme = null,
-			string embeddedThemesPath = "assets/themes",
-			string assetPrefix = "assets",
+			string? embeddedThemesPath = "assets/themes",
+			string? assetPrefix = "assets",
 			string? assetLoaderPrefix = null,
 			bool forceAssetRedirection = false
 		)
@@ -348,7 +348,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// when loading assets from other themes, as themes have their own
 		/// AssetPrefix to use.
 		/// </summary>
-		public string DefaultAssetPrefix { get; private set; }
+		public string? DefaultAssetPrefix { get; private set; }
 
 		#endregion
 
