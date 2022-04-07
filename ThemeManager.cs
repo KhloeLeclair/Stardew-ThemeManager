@@ -56,14 +56,14 @@ namespace Leclair.Stardew.ThemeManager
 		/// </summary>
 		public bool PreventRedirection { get; set; } = false;
 
-        #region Methods
+		#region Methods
 
-        /// <summary>
-        /// Check to see if any loaded mods are in this theme's For block.
-        /// </summary>
-        /// <param name="registry">Your own mod's IModRegistry helper</param>
-        /// <returns>true if there are any matching mods</returns>
-        public bool HasMatchingMod(IModRegistry registry)
+		/// <summary>
+		/// Check to see if any loaded mods are in this theme's For block.
+		/// </summary>
+		/// <param name="registry">Your own mod's IModRegistry helper</param>
+		/// <returns>true if there are any matching mods</returns>
+		public bool HasMatchingMod(IModRegistry registry)
 		{
 			if (For != null)
 				foreach (string mod in For)
@@ -75,16 +75,16 @@ namespace Leclair.Stardew.ThemeManager
 			return false;
 		}
 
-        #endregion
-    }
+		#endregion
+	}
 
-    /// <summary>
-    /// This event is emitted by ThemeManager whenever the current theme
-    /// changes, whether because the themes were reload or because the user
-    /// selected a different theme.
-    /// </summary>
-    /// <typeparam name="DataT">Your mod's BaseThemeData subclass</typeparam>
-    public class ThemeChangedEventArgs<DataT> : EventArgs where DataT : BaseThemeData
+	/// <summary>
+	/// This event is emitted by ThemeManager whenever the current theme
+	/// changes, whether because the themes were reload or because the user
+	/// selected a different theme.
+	/// </summary>
+	/// <typeparam name="DataT">Your mod's BaseThemeData subclass</typeparam>
+	public class ThemeChangedEventArgs<DataT> : EventArgs where DataT : BaseThemeData
 	{
 
 		/// <summary>
@@ -571,9 +571,9 @@ namespace Leclair.Stardew.ThemeManager
 		/// </summary>
 		/// <param name="themeId">The theme we want to check.</param>
 		public bool HasTheme(string themeId)
-        {
+		{
 			return Themes.ContainsKey(themeId);
-        }
+		}
 
 		/// <summary>
 		/// Get the theme data for a specific theme. As this method involves a
