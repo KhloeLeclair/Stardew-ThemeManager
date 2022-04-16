@@ -1,7 +1,5 @@
 ﻿# ThemeManager
 
-> **Hey!** This is for SMAPI v3.14 / v4.00 or later, when the new `AssetRequested` event was introduced. If you're looking for SMAPI v3.13 and lower support, check the [main-3 branch](https://github.com/KhloeLeclair/Stardew-ThemeManager/tree/main-3).
-
 * [What is ThemeManager?](#what-is-thememanager)
 * [Quick! How do I use this?](#quick-how-do-i-use-this)
 * [So, what is a Theme?](#so-what-is-a-theme)
@@ -13,41 +11,40 @@
 
 ## What is ThemeManager?
 
-ThemeManager is a content loader for Stardew Valley C# mods that:
+ThemeManager is an asset/data loader for Stardew Valley C# mods that:
 
 1. Discovers available themes from three sources:
    * The current mod's `assets/themes/` folder.
    * Content Packs for the current mod that have a `theme.json` file.
    * Other mods that have a `my-mod.unique-id:theme` key in their manifest, pointing to a theme json file.
-
 2. Selects an appropriate theme out of all available themes based on which mods are installed.
-
 3. Makes it easy to let users choose a theme with a config file.
-
 4. Makes it easy to reload themes at runtime for easier development.
-
-5. Passes resources through SMAPI's `AssetRequested` event so that Content Patcher packs can modify resources.
-
-6. Exists in a single file that is easy to drop into a project with no other dependencies.
+5. Passes assets through SMAPI's `AssetRequested` event (or `IAssetLoader` for pre-3.14) so that Content Patcher packs (and other mods) can modify assets.
+6. Exists as a single file that is easy to drop into a project with no other dependencies.
 
 Also, ThemeManager is licensed under MIT-0. You can use this. You don't have to credit me. Please use it. Make life easier for people making content packs.
 
 
 ## Quick! How do I use this?
 
-1. Grab the `ThemeManager.cs` (and optionally `ColorConverter.cs`) file from this repository and drop it in your project. Everything is neat and self contained. In the future, if there's an update, just replace the file with the updated one.
-2. Add a `ThemeManager` instance to your ModEntry (or somewhere else I guess, if you want).
-3. Construct that `ThemeManager` and call its `.Discover()` method to populate the list of available themes and load one.
-4. Use `ThemeManager.Load<T>(path)` instead of `Helper.Content.Load<T>(path)` for theme-aware asset loading, as appropriate.
+1. Grab the `ThemeManager.cs` file (and optionally `ColorConverter.cs` too) from this repository and drop it in your project. Everything is neat and self contained. In the future, if there's an update, just replace the file with the updated one.
+2. If you're still using SMAPI version 3.13 or *lower*, then you'll want to open `ThemeManager.cs` and uncomment this line at the start of the file:
+   ```csharp
+   // #define THEME_MANAGER_PRE_314
+   ```
+3. Add a `ThemeManager` instance to your mod, probably in `ModEntry` but anywhere convenient will do.
+4. Construct that `ThemeManager` and call its `.Discover()` method, which both populates the list of available themes and also selects the best one to use.
+5. Use `ThemeManager.Load<T>(path)` instead of `Helper.ModContent.Load<T>(path)` for theme-aware asset loading, as appropriate.
 
 Optionally:
 
-5. Register a console command for changing the current theme.
-6. Register a theme picker in Generic Mod Config Menu.
-7. Listen to the `ThemeChanged` event and do anything you need to reload assets from your theme.
-8. Subclass `BaseThemeData` and add extra colors and other values for themes to override, making themes more functional.
+6. Register a console command for changing the current theme. ([Example Here](https://github.com/KhloeLeclair/Stardew-ThemeManager/blob/main-4/ModEntry.cs#L98))
+7. Register a theme picker in Generic Mod Config Menu. ([Example Here](https://github.com/KhloeLeclair/Stardew-ThemeManager/blob/main-4/ModEntry.cs#L144))
+8. Listen to the `ThemeChanged` event and do anything you need to reload assets from your theme. ([Example Here](https://github.com/KhloeLeclair/Stardew-ThemeManager/blob/main-4/ModEntry.cs#L113))
+9. Subclass `BaseThemeData` and add extra colors and other values for themes to override, making themes more functional. ([Example Here](https://github.com/KhloeLeclair/Stardew-ThemeManager/blob/main-4/ThemeData.cs#L11))
 
-The included example mod does all of that, so check its `ModEntry` and see for yourself.
+The included example mod does all of these, so check its [`ModEntry.cs`](https://github.com/KhloeLeclair/Stardew-ThemeManager/blob/main-4/ModEntry.cs) and see for yourself how simple it is.
 
 
 ## So, what is a theme?
@@ -88,8 +85,8 @@ namespace MyCoolMod {
 		// your own theme data class (or use BaseThemeData).
 		internal ThemeManager<MyThemeData> ThemeManager;
 
-		// I find it very useful to set up a property for
-		// quick access to the current theme
+		// I find it useful to set up a property for
+		// quick access to the current theme.
 		internal MyThemeData Theme => ThemeManager.Theme;
 
 		public override void Entry(IModHelper helper) {
@@ -109,20 +106,18 @@ namespace MyCoolMod {
 
 		private void SomewhereElse() {
 			// Instead of
-			Helper.Content.Load<Texture2D>("blah.png");
+			Helper.ModContent.Load<Texture2D>("assets/blah.png");
 
 			// you do
 			ThemeManager.Load<Texture2D>("blah.png");
 
 			// And also stuff like
-			Color text = Theme?.TextColor ?? Game1.textColor;
+			Color text = Theme.TextColor ?? Game1.textColor;
 		}
 	}
 
 }
 ```
-
-> Notice how we use `Theme?.TextColor`, because the theme might be null. You can also provide a default value for your theme which prevents that.
 
 
 ## Well, what does a `theme.json` file look like?

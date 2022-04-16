@@ -1,5 +1,39 @@
 ﻿# Changelog
 
+## 2.0.0
+Released April 16th, 2022.
+
+### Breaking Changes
+
+* Require that `DataT` have a parameterless constructor that we might
+  construct a new instance, ensuring that `DefaultTheme` is never null
+  and thus that `Theme` is also never null.
+
+* Because `Theme` is no longer nullable, the `NewData` argument of
+  `ThemeChangedEventArgs<Data>` is also guaranteed to not be null.
+  `OldData` has been left as nullable for the case of the event being
+  fired when a theme had not previously been selected.
+
+* Use preprocessor directives to support both the `IAssetLoader` and
+  `AssetRequested` APIs in a single file.
+
+### Other Changes
+
+* `ThemeManager` now performs automatic version checks when the project
+  has been built in debug mode and a debugger is attached to the process,
+  making it easier for developers to stay up to date.
+* `ColorConverter` now supports the `[r], [g], [b], [a]` string format
+  used by SMAPI's default converter for `Color`.
+* `ColorConverter` now lazy generates a map of valid color names based on
+  static properties on XNA's `Color` as well as `System.Drawing.Color`,
+  rather than relying on `System.Drawing.ColorTranslator.FromHtml(...)`
+  for color names.
+* `ColorConverter` better supports trimming whitespace from around
+  color strings.
+* `ColorConverter` now supports writing values as well as reading them.
+* Update our own nullable annotations now that SMAPI has nullable annotations.
+
+
 ## 1.2.1
 Released April 7th, 2022.
 

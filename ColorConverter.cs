@@ -1,4 +1,8 @@
-﻿using System;
+﻿#nullable enable
+
+using System;
+using System.Collections.Generic;
+using System.Reflection;
 using System.Text.RegularExpressions;
 
 using Microsoft.Xna.Framework;
@@ -18,11 +22,80 @@ namespace Leclair.Stardew.ThemeManager
 	/// </summary>
 	public class ColorConverter : JsonConverter
 	{
+		#region Color Names
+
+		/// <summary>
+		/// A dictionary mapping color names to XNA Colors. Names are handled
+		/// in a case-insensitive way, and lazy loaded.
+		/// </summary>
+		private static readonly Lazy<Dictionary<string, Color>> NamedColors = new Lazy<Dictionary<string, Color>>(LoadNamedColors);
+
+		private static Dictionary<string, Color> LoadNamedColors()
+		{
+			Dictionary<string, Color> result = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase);
+
+			// Load every available color name from XNA Color.
+			foreach(PropertyInfo prop in typeof(Color).GetProperties(BindingFlags.Static | BindingFlags.Public))
+			{
+				string name = prop.Name;
+				if (result.ContainsKey(name) || prop.PropertyType != typeof(Color))
+					continue;
+
+				Color? color;
+				try
+				{
+					color = prop.GetValue(null) as Color?;
+				} catch
+				{
+					continue;
+				}
+
+				if (color.HasValue)
+					result[name] = color.Value;
+			}
+
+			// Also load every available color name from System.Drawing.Color.
+			foreach(PropertyInfo prop in typeof(SColor).GetProperties(BindingFlags.Static | BindingFlags.Public))
+			{
+				string name = prop.Name;
+				if (result.ContainsKey(name) || prop.PropertyType != typeof(SColor))
+					continue;
+
+				SColor? color;
+				try
+				{
+					color = prop.GetValue(null) as SColor?;
+				}
+				catch
+				{
+					continue;
+				}
+
+				if (color.HasValue)
+					result[name] = new Color(
+						color.Value.R,
+						color.Value.G,
+						color.Value.B,
+						color.Value.A
+					);
+			}
+
+			return result;
+		}
+
+		#endregion
+
 		#region Color Parsing
 
-		public static readonly Regex HEX_REGEX = new(@"^#([0-9a-f]{3,4}|(?:[0-9a-f]{2}){3,4})$", RegexOptions.IgnoreCase);
+		public static readonly Regex HEX_REGEX = new(@"^\s*#([0-9a-f]{3,4}|(?:[0-9a-f]{2}){3,4})\s*$", RegexOptions.IgnoreCase);
 		public static readonly Regex RGB_REGEX = new(@"^\s*rgba?\s*\(\s*(\d+%?)\s*,\s*(\d+%?)\s*,\s*(\d+%?)(?:\s*,\s*(\d+%|[\d.]+))?\s*\)\s*$", RegexOptions.IgnoreCase);
+		public static readonly Regex PLAIN_REGEX = new(@"^\s*(\d+)(?:\s*,\s*(\d+))(?:\s*,\s*(\d+))(?:\s*,\s*(\d+))?\s*$");
 
+		/// <summary>
+		/// If a value ends with a percentage sign, treat it as a percent of
+		/// 255. Otherwise, just parse it as a normal int.
+		/// </summary>
+		/// <param name="value">The value to parse</param>
 		private static int HydrateRGBValue(string value)
 		{
 			if (value.EndsWith('%'))
@@ -39,7 +112,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// </summary>
 		/// <param name="input">A CSS color string in hex, rgb, or name format</param>
 		/// <returns>A Color object, or null if no valid color was present</returns>
-		public static Color? ParseColor(string input)
+		public static Color? ParseColor(string? input)
 		{
 			if (string.IsNullOrEmpty(input))
 				return null;
@@ -54,7 +127,8 @@ namespace Leclair.Stardew.ThemeManager
 			//   #RGBA
 			//   #RRGGBB
 			//   #RRGGBBAA
-			// ColorTranslator.FromHtml does this wrong, so let's do it ourselves.
+			// ColorTranslator.FromHtml does this incorrectly according to the
+			// CSS spec, so let's do it ourselves.
 			var match = HEX_REGEX.Match(input);
 			if (match.Success)
 			{
@@ -80,7 +154,7 @@ namespace Leclair.Stardew.ThemeManager
 				}
 			}
 
-			// CSS rgb format
+			// CSS rgb format. FromHtml doesn't handle this at all.
 			match = RGB_REGEX.Match(input);
 			if (match.Success)
 			{
@@ -102,6 +176,19 @@ namespace Leclair.Stardew.ThemeManager
 				}
 			}
 
+			// Plain Format. Just R, G, B, A on a line. This is how SMAPI's
+			// built-in Color serializer reads strings, so we should support
+			// it even if it's a bit silly.
+			match = PLAIN_REGEX.Match(input);
+			if (match.Success)
+			{
+				r = Convert.ToInt32(match.Groups[1].Value);
+				g = Convert.ToInt32(match.Groups[2].Value);
+				b = Convert.ToInt32(match.Groups[3].Value);
+				if (match.Groups[4].Success)
+					a = Convert.ToInt32(match.Groups[4].Value);
+			}
+
 			// Did we assign r/g/b values?
 			if (r != -1 && g != -1 && b != -1)
 			{
@@ -113,36 +200,24 @@ namespace Leclair.Stardew.ThemeManager
 				return null;
 			}
 
-			// Fall back on ColorTranslator for handling color names so we don't need
-			// to include our own lookup table.
-			SColor color;
-			try
-			{
-				color = System.Drawing.ColorTranslator.FromHtml(input);
-			}
-			catch (Exception)
-			{
-				return null;
-			}
+			// Finally, use the name lookup table in case someone provided
+			// a color by name rather than value.
+			if (NamedColors.Value.TryGetValue(input.Trim(), out Color color))
+				return color;
 
-			if (color == SColor.Empty)
-				return null;
-
-			return new Color(color.R, color.G, color.B, color.A);
+			return null;
 		}
 
-        #endregion
+		#endregion
 
-        #region JsonConverter
-
-        public override bool CanWrite => false;
+		#region JsonConverter
 
 		public override bool CanConvert(Type objectType)
 		{
 			return objectType == typeof(Color) || Nullable.GetUnderlyingType(objectType) == typeof(Color);
 		}
 
-		public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+		public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
 		{
 			string path = reader.Path;
 			switch (reader.TokenType)
@@ -158,12 +233,26 @@ namespace Leclair.Stardew.ThemeManager
 			}
 		}
 
-		public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+		public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
 		{
-			throw new InvalidOperationException("This converter does not support writing.");
+			if (value is not Color color)
+			{
+				writer.WriteNull();
+				return;
+			}
+
+			JObject jo = new JObject
+			{
+				{"R", color.R},
+				{"G", color.G},
+				{"B", color.B},
+				{"A", color.A}
+			};
+
+			jo.WriteTo(writer);
 		}
 
-		private static Color? ReadString(string value)
+		private static Color? ReadString(string? value)
 		{
 			return ParseColor(value);
 		}
@@ -180,8 +269,11 @@ namespace Leclair.Stardew.ThemeManager
 			return true;
 		}
 
-		private static Color? ReadObject(JObject obj, string path)
+		private static Color? ReadObject(JObject? obj, string path)
 		{
+			if (obj is null)
+				return null;
+
 			try
 			{
 				if (!TryReadInt(obj, "R", out int R) ||

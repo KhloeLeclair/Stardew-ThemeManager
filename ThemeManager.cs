@@ -1,4 +1,9 @@
-﻿#nullable enable
+﻿// If THEME_MANAGER_PRE_314 is defined, we'll use SMAPI 3.13 and earlier
+// APIs for compatibility. If it is not defined, we'll use the new APIs
+// for content added in 3.14. Just comment or uncomment this line as
+// necessary for your build target.
+// #define THEME_MANAGER_PRE_314
+#nullable enable
 
 using System;
 using System.IO;
@@ -12,8 +17,20 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewModdingAPI.Utilities;
 
+#if DEBUG
+using Newtonsoft.Json;
+using System.Net;
+using System.Threading;
+#endif
+
 namespace Leclair.Stardew.ThemeManager
 {
+#if DEBUG
+	internal class UpdateData
+	{
+		public string? Version { get; set; }
+	}
+#endif
 
 	/// <summary>
 	/// BaseThemeData represents the barest possible set of theme data, only
@@ -103,9 +120,9 @@ namespace Leclair.Stardew.ThemeManager
 		/// <summary>
 		/// The theme data of the new theme
 		/// </summary>
-		public DataT? NewData;
+		public DataT NewData;
 
-		public ThemeChangedEventArgs(string oldId, DataT? oldData, string newID, DataT? newData)
+		public ThemeChangedEventArgs(string oldId, DataT? oldData, string newID, DataT newData)
 		{
 			OldId = oldId;
 			NewId = newID;
@@ -154,10 +171,10 @@ namespace Leclair.Stardew.ThemeManager
 	/// calls with <see cref="Load{T}(string)"/>.
 	/// </summary>
 	/// <typeparam name="DataT">Your mod's BaseThemeData subclass</typeparam>
-	public class ThemeManager<DataT> where DataT : BaseThemeData
+	public class ThemeManager<DataT> where DataT : BaseThemeData, new()
 	{
 
-		public static readonly SemanticVersion Version = new("1.2.1");
+		public static readonly SemanticVersion Version = new("2.0.0");
 
 		public static readonly string ContentPatcher_UniqueID = "Pathoschild.ContentPatcher";
 
@@ -177,7 +194,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// Storage of the <see cref="DefaultTheme"/>. This should not be accessed directly,
 		/// instead prefering the use of <see cref="DefaultTheme"/> (which is public).
 		/// </summary>
-		private DataT? _DefaultTheme;
+		private DataT _DefaultTheme;
 
 		/// <summary>
 		/// The currently active theme. We store this directly to avoid needing
@@ -190,11 +207,20 @@ namespace Leclair.Stardew.ThemeManager
 		/// dictionary so we can continue to take advantage of types when
 		/// loading assets.
 		/// </summary>
-		private readonly Dictionary<string, Func<object?>> LoadingAssets = new();
+		private readonly Dictionary<string, Func<object>> LoadingAssets = new();
 
 		#endregion
 
 		#region Public Fields
+
+#if THEME_MANAGER_PRE_314
+		/// <summary>
+		/// The <c>Loader</c> is a private <see cref="IAssetLoader"/> that we
+		/// use for redirecting asset loading through game content, allowing
+		/// Content Patcher (and other mods) to modify them.
+		/// </summary>
+		public readonly ThemeAssetLoader Loader;
+#endif
 
 		/// <summary>
 		/// The AssetLoaderPrefix is prepended to asset names when redirecting
@@ -239,9 +265,11 @@ namespace Leclair.Stardew.ThemeManager
 		/// paths when redirecting asset loading through IAssetLoader. By
 		/// default, this value is <c>Mods/{yourMod.UniqueId}/Themes</c>.
 		/// <seealso cref="AssetLoaderPrefix"/></param>
-		/// <param name="forceAssetRedirection">If set to true, we will use
-		/// redirected asset loading even if Content Patcher is not
-		/// present in the current environment.
+		/// <param name="forceAssetRedirection">If set to <c>true</c>, we will
+		/// use redirected asset loading even if Content Patcher is not
+		/// present in the current environment. If set to <c>false</c>, we will
+		/// never use redirected asset loading even if Content Patcher is
+		/// present. Leave it at <c>null</c> for the default behavior.
 		/// <seealso cref="UsingAssetRedirection"/></param>
 		public ThemeManager(
 			Mod mod,
@@ -250,27 +278,33 @@ namespace Leclair.Stardew.ThemeManager
 			string? embeddedThemesPath = "assets/themes",
 			string? assetPrefix = "assets",
 			string? assetLoaderPrefix = null,
-			bool forceAssetRedirection = false
+			bool? forceAssetRedirection = null
 		)
 		{
 			// Store the basic initial values.
 			Mod = mod;
 			SelectedThemeId = selectedThemeId;
-			_DefaultTheme = defaultTheme;
 			DefaultAssetPrefix = assetPrefix;
 			EmbeddedThemesPath = embeddedThemesPath;
+
+			_DefaultTheme = defaultTheme ?? new DataT();
 
 			// Log our version.
 			Log($"Using Theme Manager {Version}");
 
 			// Detect Content Patcher
 			bool hasCP = Mod.Helper.ModRegistry.IsLoaded(ContentPatcher_UniqueID);
-			if (hasCP)
-				Log("Content Patcher is present. Redirecting resource loading through game content to support patching.");
-			else if (forceAssetRedirection)
-				Log("Content Patcher is NOT present. However, we are still redirecting asset loading due to manual override.");
 
-			UsingAssetRedirection = hasCP || forceAssetRedirection;
+			if (hasCP && forceAssetRedirection.HasValue && !forceAssetRedirection.Value)
+				Log("Content Patcher is present. However, asset redirection has been explicitly disabled.");
+			else if (hasCP)
+				Log("Content Patcher is present. Asset redirection will be enabled.");
+			else if (forceAssetRedirection.HasValue && forceAssetRedirection.Value)
+				Log("Content Patcher is NOT present. However, asset redirection has been explicitly enabled.");
+			else
+				Log("Content Patcher is NOT present. Asset redirection will be disabled.");
+
+			UsingAssetRedirection = forceAssetRedirection ?? hasCP;
 
 			// Always run the AssetLoaderPrefix through NormalizeAssetName,
 			// otherwise we'll run into issues actually using our custom
@@ -282,7 +316,18 @@ namespace Leclair.Stardew.ThemeManager
 				);
 
 			// Register an event listener so we can provide assets.
+#if THEME_MANAGER_PRE_314
+			Loader = new ThemeAssetLoader(this);
+			Mod.Helper.Content.AssetLoaders.Add(Loader);
+#else
 			Mod.Helper.Events.Content.AssetRequested += OnAssetRequested;
+#endif
+
+#if DEBUG
+			// Perform an update check when running a debug build, to
+			// notify developers when an updated ThemeManager is available.
+			PerformVersionCheck();
+#endif
 		}
 
 		#endregion
@@ -295,14 +340,14 @@ namespace Leclair.Stardew.ThemeManager
 		/// property, a theme changed event may be emitted if the default
 		/// theme is the active theme.
 		/// </summary>
-		public DataT? DefaultTheme
+		public DataT DefaultTheme
 		{
 			get => _DefaultTheme;
 			set
 			{
 				bool is_default = ActiveThemeId == "default";
 				DataT? oldData = Theme;
-				_DefaultTheme = value;
+				_DefaultTheme = value ?? new DataT();
 				if (is_default)
 					ThemeChanged?.Invoke(this, new ThemeChangedEventArgs<DataT>("default", oldData, "default", _DefaultTheme));
 			}
@@ -330,10 +375,9 @@ namespace Leclair.Stardew.ThemeManager
 		/// <summary>
 		/// The currently active theme's <typeparamref name="DataT"/> instance.
 		/// If the active theme is <c>default</c>, then this will be the value
-		/// of <see cref="DefaultTheme"/>. This value may be null if there is
-		/// no default theme.
+		/// of <see cref="DefaultTheme"/>.
 		/// </summary>
-		public DataT? Theme => BaseThemeData?.Data ?? _DefaultTheme;
+		public DataT Theme => BaseThemeData?.Data ?? _DefaultTheme;
 
 		/// <summary>
 		/// This event is fired whenever the currently active theme changes,
@@ -360,6 +404,55 @@ namespace Leclair.Stardew.ThemeManager
 			if (ex != null)
 				Mod.Monitor.Log($"[ThemeManager] Details:\n{ex}", level: exLevel ?? level);
 		}
+
+		#endregion
+
+		#region Verison Checking
+
+#if DEBUG
+		/// <summary>
+		/// Perform a version check against the GitHub repository, and log a
+		/// message if this version of ThemeManager is out of date. This should
+		/// only happen for debug builds, and even then only when a debugger
+		/// is attached to ensure that end users aren't warned about updating
+		/// something that has nothing to do with them.
+		/// </summary>
+		private void PerformVersionCheck()
+		{
+			if (!System.Diagnostics.Debugger.IsAttached)
+				return;
+
+			new Thread(() =>
+			{
+				Log("Checking for updates...");
+				try
+				{
+					using WebClient client = new WebClient();
+
+					string result = client.DownloadString("https://raw.githubusercontent.com/KhloeLeclair/Stardew-ThemeManager/main-4/latest.json");
+					UpdateData? data = JsonConvert.DeserializeObject<UpdateData>(result);
+
+					if (data is not null && data.Version is not null && SemanticVersion.TryParse(data.Version, out ISemanticVersion? parsed))
+					{
+						if (Version.IsOlderThan(parsed))
+						{
+							Log($"ThemeManager is out of date. Using: {Version}, Latest: {parsed}", LogLevel.Alert);
+							Log("Please update ThemeManager from https://github.com/KhloeLeclair/Stardew-ThemeManager", LogLevel.Alert);
+							Log("If you are not a mod developer, you can ignore this message as it is not intended for you.", LogLevel.Alert);
+						}
+						else
+						{
+							Log("ThemeManager is up to date.", LogLevel.Trace);
+                        }
+					}
+				}
+				catch (Exception ex)
+				{
+					Log($"Could not check for updated version of ThemeManager.", LogLevel.Warn, ex);
+				}
+			}).Start();
+	}
+#endif
 
 		#endregion
 
@@ -652,7 +745,7 @@ namespace Leclair.Stardew.ThemeManager
 					if (!cp.Value.Item2.HasFile(file))
 						continue;
 
-					DataT data;
+					DataT? data;
 					try
 					{
 						data = cp.Value.Item2.ReadJsonFile<DataT>(file);
@@ -737,7 +830,7 @@ namespace Leclair.Stardew.ThemeManager
 				var cp = Mod.Helper.ContentPacks.CreateTemporary(
 					directoryPath: dir,
 					id: manifest.UniqueID ?? $"{Mod.ModManifest.UniqueID}.theme.{folder}",
-					name: manifest.Name,
+					name: manifest.Name ?? folder,
 					description: manifest.Description ?? $"{Mod.ModManifest.Name} Theme: {manifest.Name}",
 					author: manifest.Author ?? Mod.ModManifest.Author,
 					version: new SemanticVersion(manifest.Version ?? "1.0.0")
@@ -831,10 +924,17 @@ namespace Leclair.Stardew.ThemeManager
 				// want any of the directory part.
 				file = Path.GetFileName(full_file);
 
+				string? folder = Path.GetDirectoryName(full_file);
+				if (folder is null)
+				{
+					Log($"Unable to get directory from path \"{full_file}\". Skipping theme.", LogLevel.Warn);
+					continue;
+				}
+
 				// Build a temporary content pack for just our theme within
 				// this other mod.
 				var cp = Mod.Helper.ContentPacks.CreateTemporary(
-					directoryPath: Path.GetDirectoryName(full_file),
+					directoryPath: folder,
 					id: $"{Mod.ModManifest.UniqueID}.theme.{mod.Manifest.UniqueID}",
 					name: mod.Manifest.Name,
 					description: mod.Manifest.Description,
@@ -921,7 +1021,7 @@ namespace Leclair.Stardew.ThemeManager
 				Invalidate(postReload ? null : old_active);
 
 				// And emit our event.
-				ThemeChanged?.Invoke(this, new(old_active, old_data?.Data, ActiveThemeId, BaseThemeData?.Data));
+				ThemeChanged?.Invoke(this, new(old_active, old_data?.Data, ActiveThemeId, Theme));
 			}
 		}
 
@@ -941,7 +1041,11 @@ namespace Leclair.Stardew.ThemeManager
 			if (!string.IsNullOrEmpty(themeId))
 				key = PathUtilities.NormalizeAssetName(Path.Join(AssetLoaderPrefix, themeId));
 
+#if THEME_MANAGER_PRE_314
+			Mod.Helper.Content.InvalidateCache(info => info.AssetName.StartsWith(key));
+#else
 			Mod.Helper.GameContent.InvalidateCache(info => info.Name.StartsWith(key));
+#endif
 		}
 
 		/// <summary>
@@ -956,7 +1060,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// <param name="themeId">Load the resource from the specified theme rather than the active theme.</param>
 		/// <exception cref="System.ArgumentException">The <paramref name="path"/> is empty or contains invalid characters.</exception>
 		/// <exception cref="Microsoft.Xna.Framework.Content.ContentLoadException">The content asset couldn't be loaded (e.g. because it doesn't exist).</exception>
-		public T Load<T>(string path, string? themeId = null)
+		public T Load<T>(string path, string? themeId = null) where T : notnull
 		{
 			// Either check the specified theme, or the active theme.
 			Theme<DataT>? theme;
@@ -987,7 +1091,11 @@ namespace Leclair.Stardew.ThemeManager
 
 			try
 			{
+#if THEME_MANAGER_PRE_314
+				return Mod.Helper.Content.Load<T>(assetPath, ContentSource.GameContent);
+#else
 				return Mod.Helper.GameContent.Load<T>(assetPath);
+#endif
 			}
 			finally
 			{
@@ -1040,7 +1148,7 @@ namespace Leclair.Stardew.ThemeManager
 		/// <param name="themeId">Load the resource from the specified theme rather than the active theme.</param>
 		/// <exception cref="System.ArgumentException">The key is empty or contains invalid characters.</exception>
 		/// <exception cref="Microsoft.Xna.Framework.Content.ContentLoadException">The content asset couldn't be loaded (e.g. because it doesn't exist).</exception>
-		private T InternalLoad<T>(string path, string? themeId = null)
+		private T InternalLoad<T>(string path, string? themeId = null) where T : notnull
 		{
 			// Either check the specified theme, or the active theme.
 			Theme<DataT>? theme;
@@ -1062,7 +1170,11 @@ namespace Leclair.Stardew.ThemeManager
 				if (theme.Content.HasFile(lpath))
 					try
 					{
+#if THEME_MANAGER_PRE_314
+						return theme.Content.LoadAsset<T>(lpath);
+#else
 						return theme.Content.ModContent.Load<T>(lpath);
+#endif
 					}
 					catch (Exception ex)
 					{
@@ -1074,12 +1186,58 @@ namespace Leclair.Stardew.ThemeManager
 			if (!string.IsNullOrEmpty(DefaultAssetPrefix))
 				path = Path.Join(DefaultAssetPrefix, path);
 
+#if THEME_MANAGER_PRE_314
+			return Mod.Helper.Content.Load<T>(path);
+#else
 			return Mod.Helper.ModContent.Load<T>(path);
+#endif
 		}
 
 		#endregion
 
 		#region AssetRequested Handling
+
+#if THEME_MANAGER_PRE_314
+
+		/// <summary>
+		/// ThemeAssetLoader is a simple <see cref="IAssetLoader"/> used to
+		/// load assets from a theme as a game asset, thus allowing
+		/// Content Patcher to modify the file.
+		/// </summary>
+		public class ThemeAssetLoader : IAssetLoader
+		{
+			private readonly ThemeManager<DataT> Manager;
+
+			public ThemeAssetLoader(ThemeManager<DataT> manager)
+			{
+				Manager = manager;
+			}
+
+			public bool CanLoad<T>(IAssetInfo asset)
+			{
+				// We can only load our own assets.
+				if (!asset.AssetName.StartsWith(Manager.AssetLoaderPrefix))
+					return false;
+
+				// We only load assets that we know we're trying to load.
+				return Manager.LoadingAssets.ContainsKey(asset.AssetName);
+			}
+
+#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
+#pragma warning disable CS8603 // Possible null reference return.
+			public T Load<T>(IAssetInfo asset)
+			{
+				// We can only load our own assets, that we're trying to load.
+				if (!asset.AssetName.StartsWith(Manager.AssetLoaderPrefix) || ! Manager.LoadingAssets.ContainsKey(asset.AssetName))
+					return (T)(object)null;
+
+				return (T)Manager.LoadingAssets[asset.AssetName]();
+			}
+#pragma warning restore CS8603 // Possible null reference return.
+#pragma warning restore CS8600 // Converting null literal or possible null value to non-nullable type.
+		}
+
+#else
 
 		private void OnAssetRequested(object? sender, AssetRequestedEventArgs e)
 		{
@@ -1097,6 +1255,8 @@ namespace Leclair.Stardew.ThemeManager
 				);
 			}
 		}
+
+#endif
 
 		#endregion
 	}
